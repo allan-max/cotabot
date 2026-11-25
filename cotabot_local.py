@@ -1,5 +1,5 @@
-"""Cotabot local: página de teste + fila + robô que cota cada item com o Claude Code no Edge
-(extensão Claude; as ferramentas se chamam claude-in-chrome, mas funcionam no Edge).
+"""Cotabot local: página de teste + fila + robô que cota cada item com o Claude Code no navegador
+(extensão Claude; Edge ou Chrome, escolhido por COTABOT_NAVEGADOR).
 
 No fim de cada pedido gera a Planilha Base preenchida (gerar_planilha.py).
 
@@ -12,6 +12,7 @@ Configuração (variável de ambiente ou linha COTABOT_...=valor no .env; do .en
     COTABOT_HOST   endereço que o servidor ouve (padrão 127.0.0.1; na VM 0.0.0.0)
     COTABOT_PORTA  porta (padrão 8765)
     COTABOT_TOKEN  obrigatório para chamadas que não vêm desta máquina (igual ao do .env do gerenciador)
+    COTABOT_NAVEGADOR  edge (padrão) ou chrome: o navegador com a extensão Claude que o robô usa
 """
 import json
 import os
@@ -75,7 +76,7 @@ def aviso_config():
         parecidos = [p.name for p in pasta.iterdir() if p.name.lower().startswith(".env") or p.name.lower() == "env"]
         if parecidos:
             print(f"  arquivos parecidos na pasta: {', '.join(parecidos)} (o nome tem de ser só .env)", flush=True)
-    for k in ("COTABOT_HOST", "COTABOT_PORTA", "COTABOT_TOKEN"):
+    for k in ("COTABOT_HOST", "COTABOT_PORTA", "COTABOT_TOKEN", "COTABOT_NAVEGADOR"):
         if k in CONFIG:
             valor = f"{len(CONFIG[k])} caracteres" if k == "COTABOT_TOKEN" else CONFIG[k]
             print(f"  {k} = {valor}  (de: {ORIGEM[k]})", flush=True)
@@ -88,6 +89,14 @@ HOST = CONFIG.get("COTABOT_HOST") or "127.0.0.1"
 PORTA = int(CONFIG.get("COTABOT_PORTA") or 8765)
 TOKEN = (CONFIG.get("COTABOT_TOKEN") or "").strip()
 LOCAIS = {"127.0.0.1", "::1"}
+# Navegador do robô: (nome para o Claude, processo no Windows, comando do "start")
+NAVEGADORES = {"edge": ("Microsoft Edge", "msedge.exe", "msedge"),
+               "chrome": ("Google Chrome", "chrome.exe", "chrome")}
+NAVEGADOR = (CONFIG.get("COTABOT_NAVEGADOR") or "edge").strip().lower()
+if NAVEGADOR not in NAVEGADORES:
+    NAVEGADOR = "edge"
+NAV_NOME, NAV_PROCESSO, NAV_COMANDO = NAVEGADORES[NAVEGADOR]
+NAV_OUTRO = NAVEGADORES["chrome" if NAVEGADOR == "edge" else "edge"][0]
 TEMPO_MAX_ITEM = 40 * 60  # segundos por item (fornecedores + Google)
 
 fila = queue.Queue()
@@ -100,7 +109,7 @@ trava = threading.Lock()
 def carregar_env():
     """Ambiente do Claude Code filho.
 
-    A extensão Claude (no Edge) só conecta quando o Claude Code está logado na MESMA conta do claude.ai,
+    A extensão Claude (no navegador) só conecta quando o Claude Code está logado na MESMA conta do claude.ai,
     por isso a chave da API (.env) NÃO é usada aqui. Também tira as variáveis de uma sessão
     Claude que tenha iniciado este programa, para o filho rodar como um Claude Code normal.
     """
@@ -134,9 +143,9 @@ ONDE COTAR: {onde}
 
 Regras deste robô (valem por cima da skill):
 - Você está rodando sem ninguém olhando. Não faça perguntas: se a descrição for vaga, cote com o que tiver.
-- ANTES de tudo, escolha o navegador: chame list_connected_browsers e selecione com select_browser o Microsoft Edge
-  DESTE computador (onThisComputer verdadeiro; se houver mais de um, o que tiver Edge no nome). Nunca use navegador de
-  outro computador da conta, nunca use o Google Chrome e nunca chame switch_browser. Se não houver Edge deste
+- ANTES de tudo, escolha o navegador: chame list_connected_browsers e selecione com select_browser o {nav}
+  DESTE computador (onThisComputer verdadeiro; se houver mais de um, o que tiver {nav} no nome). Nunca use navegador de
+  outro computador da conta, nunca use o {nav_outro} e nunca chame switch_browser. Se não houver {nav} deste
   computador na lista, pare na hora e responda só: NAVEGADOR_NAO_CONECTADO
 - Abra uma aba NOVA com tabs_create_mcp e trabalhe nas abas do seu grupo.
 - OBRIGATÓRIO no fim, antes do JSON final: chame tabs_context_mcp e feche com tabs_close_mcp TODAS as abas do seu
@@ -269,7 +278,7 @@ def rodar_claude(prompt, ao_passo, estado, sessao=None, limite_s=TEMPO_MAX_ITEM)
             parado = time.monotonic() - ultima_saida[0]
             if parado >= 120 and proc.poll() is None:
                 log(f"o Claude Code está há {int(parado // 60)} min sem responder "
-                    "(confira o Edge, a extensão Claude e o login do Claude Code)")
+                    f"(confira o {NAV_NOME}, a extensão Claude e o login do Claude Code)")
 
     relogio = threading.Timer(limite_s, matar)
     relogio.start()
@@ -384,23 +393,23 @@ def _descrever_passo(nome, entrada):
     return nome
 
 
-def edge_aberto():
-    saida = subprocess.run(["tasklist", "/FI", "IMAGENAME eq msedge.exe", "/NH"],
+def navegador_aberto():
+    saida = subprocess.run(["tasklist", "/FI", f"IMAGENAME eq {NAV_PROCESSO}", "/NH"],
                            capture_output=True, text=True, errors="replace").stdout
-    return "msedge.exe" in saida.lower()
+    return NAV_PROCESSO in saida.lower()
 
 
-def abrir_edge(espera_s=10):
-    """A extensão Claude roda no Edge; com o Edge fechado o Claude Code não conecta."""
-    if edge_aberto():
+def abrir_navegador(espera_s=10):
+    """A extensão Claude roda no navegador; com ele fechado o Claude Code não conecta."""
+    if navegador_aberto():
         return
-    print("abrindo o Edge...", flush=True)
-    subprocess.Popen(["cmd", "/c", "start", "", "msedge"], creationflags=subprocess.CREATE_NO_WINDOW)
+    log(f"abrindo o {NAV_NOME}...")
+    subprocess.Popen(["cmd", "/c", "start", "", NAV_COMANDO], creationflags=subprocess.CREATE_NO_WINDOW)
     time.sleep(espera_s)
 
 
 def cotar_item(item, sites, ao_passo=lambda *a: None):
-    abrir_edge()
+    abrir_navegador()
     for tentativa in (1, 2):
         estado = {"sessao": None, "fechou": True}
         try:
@@ -408,8 +417,8 @@ def cotar_item(item, sites, ao_passo=lambda *a: None):
         except RuntimeError as e:
             fechar_navegador(estado)
             if tentativa == 1 and "não conectou" in str(e):
-                print("extensão não conectou; reabrindo o Edge e tentando de novo...", flush=True)
-                abrir_edge()
+                log(f"extensão não conectou; reabrindo o {NAV_NOME} e tentando de novo...")
+                abrir_navegador()
                 time.sleep(10)
                 continue
             raise
@@ -426,7 +435,8 @@ def cotar_item(item, sites, ao_passo=lambda *a: None):
 def _cotar_item(item, sites, ao_passo, estado):
     com_google = not sites or any(s.strip().lower() in ("google", "google.com", "www.google.com") for s in sites)
     prompt = PROMPT.format(onde=onde_cotar(sites), numero=item["numero"], quantidade=item.get("quantidade") or 1,
-                           descricao=item["descricao"], minimo=MINIMO_GOOGLE if com_google else "")
+                           descricao=item["descricao"], minimo=MINIMO_GOOGLE if com_google else "",
+                           nav=NAV_NOME, nav_outro=NAV_OUTRO)
     inicio = datetime.now()
     saida, antes, depois, passos = rodar_claude(prompt, ao_passo, estado)
     custo = saida.get("total_cost_usd") or 0
@@ -438,7 +448,7 @@ def _cotar_item(item, sites, ao_passo, estado):
             raise RuntimeError(texto[-800:] or str(s)[-800:])
         if ("extension is not connected" in texto.lower() or "não está conectada" in texto.lower()
                 or "NAVEGADOR_NAO_CONECTADO" in texto):
-            raise RuntimeError("A extensão Claude não conectou. Abra o Microsoft Edge com a extensão Claude ativa "
+            raise RuntimeError(f"A extensão Claude não conectou. Abra o {NAV_NOME} com a extensão Claude ativa "
                                "e logada no claude.ai (mesma conta do Claude Code).")
         return extrair_json(texto)
 
@@ -648,8 +658,8 @@ def main():
     servidor = ThreadingHTTPServer((HOST, PORTA), Handler)
     print(f"Cotabot rodando em http://{HOST}:{PORTA}  (Ctrl+C para parar)", flush=True)
     if "--abrir-pagina" in sys.argv:
-        # Abre a página no Edge: isso também deixa o Edge (e a extensão Claude) aberto para o robô.
-        subprocess.Popen(["cmd", "/c", "start", "", "msedge", f"http://127.0.0.1:{PORTA}"],
+        # Abre a página no navegador do robô: isso também deixa ele (e a extensão Claude) aberto.
+        subprocess.Popen(["cmd", "/c", "start", "", NAV_COMANDO, f"http://127.0.0.1:{PORTA}"],
                          creationflags=subprocess.CREATE_NO_WINDOW)
     try:
         servidor.serve_forever()

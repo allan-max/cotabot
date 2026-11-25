@@ -7,6 +7,7 @@ rem Cotabot na VM: o gerenciador do Maestro chama a API pela rede (gerenciador\p
 rem Precisa no .env desta pasta:
 rem     COTABOT_HOST=0.0.0.0
 rem     COTABOT_TOKEN=<o mesmo COTABOT_TOKEN do .env do gerenciador, 32+ caracteres>
+rem     COTABOT_NAVEGADOR=chrome   (ou edge: o navegador com a extensao Claude logada)
 
 where claude >nul 2>nul
 if errorlevel 1 (
@@ -20,8 +21,7 @@ if not exist ".venv\Scripts\python.exe" (
 )
 ".venv\Scripts\python.exe" -c "import openpyxl, PIL" 2>nul || ".venv\Scripts\python.exe" -m pip install -q -r requirements.txt
 
-echo Abrindo o Microsoft Edge (a extensao Claude precisa estar ativa e logada no claude.ai).
-start "" msedge about:blank
+echo O robo abre o navegador do .env (COTABOT_NAVEGADOR) ao cotar; a extensao Claude precisa estar logada nele.
 echo Feche esta janela para parar o Cotabot.
 echo.
 ".venv\Scripts\python.exe" cotabot_local.py
