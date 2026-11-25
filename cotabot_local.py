@@ -42,7 +42,8 @@ def ler_config():
     cfg = {}
     arq = Path(__file__).parent / ".env"
     if arq.exists():
-        for linha in arq.read_text(encoding="utf-8", errors="ignore").splitlines():
+        # utf-8-sig: o Bloco de Notas grava o .env com BOM, que estragaria o nome da 1ª linha
+        for linha in arq.read_text(encoding="utf-8-sig", errors="ignore").splitlines():
             k, _, v = linha.partition("=")
             k = k.strip()
             if k.startswith("COTABOT_"):
