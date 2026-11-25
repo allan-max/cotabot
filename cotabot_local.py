@@ -613,7 +613,28 @@ class Handler(BaseHTTPRequestHandler):
         self.responder(200, {"id": tid})
 
 
+def desligar_selecao_do_console():
+    """Tira o "modo de seleção" (QuickEdit) da janela do console no Windows.
+
+    Com ele ligado, um clique na janela a deixa em "Select ..." e o Windows congela o programa no próximo
+    print: o robô para no meio da cotação sem erro nenhum.
+    """
+    if os.name != "nt":
+        return
+    try:
+        import ctypes
+        k32 = ctypes.windll.kernel32
+        entrada = k32.GetStdHandle(-10)  # STD_INPUT_HANDLE
+        modo = ctypes.c_uint32()
+        if k32.GetConsoleMode(entrada, ctypes.byref(modo)):
+            # tira ENABLE_QUICK_EDIT_MODE (0x40) e liga ENABLE_EXTENDED_FLAGS (0x80), exigido para valer
+            k32.SetConsoleMode(entrada, (modo.value & ~0x40) | 0x80)
+    except Exception:  # noqa: BLE001 - sem console (ex.: rodando como serviço): nada a fazer
+        pass
+
+
 def main():
+    desligar_selecao_do_console()
     threading.Thread(target=robo, daemon=True).start()
     talvez_ler_uso()
     aviso_config()
