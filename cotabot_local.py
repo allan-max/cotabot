@@ -143,10 +143,10 @@ ONDE COTAR: {onde}
 
 Regras deste robô (valem por cima da skill):
 - Você está rodando sem ninguém olhando. Não faça perguntas: se a descrição for vaga, cote com o que tiver.
-- ANTES de tudo, escolha o navegador: chame list_connected_browsers e selecione com select_browser o {nav}
-  DESTE computador (onThisComputer verdadeiro; se houver mais de um, o que tiver {nav} no nome). Nunca use navegador de
-  outro computador da conta, nunca use o {nav_outro} e nunca chame switch_browser. Se não houver {nav} deste
-  computador na lista, pare na hora e responda só: NAVEGADOR_NAO_CONECTADO
+- Use o navegador que já vem conectado a esta sessão (o {nav} deste computador). Nunca chame
+  list_connected_browsers, select_browser nem switch_browser: eles podem levar a um navegador de OUTRO computador da
+  conta. Se a ferramenta do navegador disser que a extensão não está conectada, pare na hora e responda só:
+  NAVEGADOR_NAO_CONECTADO
 - Abra uma aba NOVA com tabs_create_mcp e trabalhe nas abas do seu grupo.
 - OBRIGATÓRIO no fim, antes do JSON final: chame tabs_context_mcp e feche com tabs_close_mcp TODAS as abas do seu
   grupo, uma por uma, até a janela fechar. Não deixe nenhuma aba sua aberta.
@@ -314,6 +314,14 @@ def rodar_claude(prompt, ao_passo, estado, sessao=None, limite_s=TEMPO_MAX_ITEM)
                             estado["fechou"] = False
                         log(f"passo {passos}: {_descrever_passo(nome, b.get('input') or {})}")
                         ao_passo(passos, nome, b.get("input") or {})
+            elif tipo == "user":
+                # Erro de ferramenta (ex.: extensão não conectada) vai para a janela e o cotabot.log
+                for b in m.get("message", {}).get("content", []) or []:
+                    if isinstance(b, dict) and b.get("type") == "tool_result" and b.get("is_error"):
+                        conteudo = b.get("content")
+                        if isinstance(conteudo, list):
+                            conteudo = " ".join(str(c.get("text", "")) for c in conteudo if isinstance(c, dict))
+                        log("erro da ferramenta: " + str(conteudo or "")[:300])
             elif tipo == "rate_limit_event":
                 info = (m.get("rate_limit_info") or {}).get("unifiedWindows")
                 if info:
