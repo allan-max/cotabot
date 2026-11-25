@@ -134,6 +134,10 @@ ONDE COTAR: {onde}
 
 Regras deste robô (valem por cima da skill):
 - Você está rodando sem ninguém olhando. Não faça perguntas: se a descrição for vaga, cote com o que tiver.
+- ANTES de tudo, escolha o navegador: chame list_connected_browsers e selecione com select_browser o Microsoft Edge
+  DESTE computador (onThisComputer verdadeiro; se houver mais de um, o que tiver Edge no nome). Nunca use navegador de
+  outro computador da conta, nunca use o Google Chrome e nunca chame switch_browser. Se não houver Edge deste
+  computador na lista, pare na hora e responda só: NAVEGADOR_NAO_CONECTADO
 - Abra uma aba NOVA com tabs_create_mcp e trabalhe nas abas do seu grupo.
 - OBRIGATÓRIO no fim, antes do JSON final: chame tabs_context_mcp e feche com tabs_close_mcp TODAS as abas do seu
   grupo, uma por uma, até a janela fechar. Não deixe nenhuma aba sua aberta.
@@ -432,7 +436,8 @@ def _cotar_item(item, sites, ao_passo, estado):
         texto = s.get("result", "") or ""
         if s.get("is_error"):
             raise RuntimeError(texto[-800:] or str(s)[-800:])
-        if "extension is not connected" in texto.lower() or "não está conectada" in texto.lower():
+        if ("extension is not connected" in texto.lower() or "não está conectada" in texto.lower()
+                or "NAVEGADOR_NAO_CONECTADO" in texto):
             raise RuntimeError("A extensão Claude não conectou. Abra o Microsoft Edge com a extensão Claude ativa "
                                "e logada no claude.ai (mesma conta do Claude Code).")
         return extrair_json(texto)
