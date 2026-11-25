@@ -211,6 +211,20 @@ def onde_cotar(sites):
     return "; ".join(partes) + "."
 
 
+ARQ_LOG = BASE / "cotabot.log"
+
+
+def log(texto):
+    """Mostra na janela e grava em cotabot.log (para conferir depois na VM)."""
+    linha = f"{datetime.now():%d/%m %H:%M:%S} {texto}"
+    print(linha, flush=True)
+    try:
+        with ARQ_LOG.open("a", encoding="utf-8") as f:
+            f.write(linha + "\n")
+    except OSError:
+        pass
+
+
 def rodar_claude(prompt, ao_passo, estado, sessao=None, limite_s=TEMPO_MAX_ITEM):
     """Roda o Claude Code sem janela e lê o stream ao vivo.
 
@@ -224,26 +238,56 @@ def rodar_claude(prompt, ao_passo, estado, sessao=None, limite_s=TEMPO_MAX_ITEM)
     if sessao:
         cmd += ["--resume", sessao]
     cmd += ["--allowedTools", "mcp__claude-in-chrome", "Skill", "Read", "ToolSearch"]
+    log("iniciando o Claude Code...")
     proc = subprocess.Popen(cmd, stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
                             text=True, encoding="utf-8", errors="replace", cwd=BASE, env=carregar_env())
     estourou = threading.Event()
+    ultima_saida = [time.monotonic()]
+    erros = []
 
     def matar():
         estourou.set()
         proc.kill()
 
+    def ler_erros():
+        # Lê o stderr enquanto roda: sem isso o buffer enche e o Claude Code trava calado.
+        for linha in proc.stderr:
+            linha = linha.rstrip()
+            if linha:
+                erros.append(linha)
+                del erros[:-40]
+                log("claude (erro): " + linha[:300])
+
+    def vigiar():
+        # Avisa na janela quando o Claude Code fica muito tempo sem dizer nada.
+        while proc.poll() is None:
+            time.sleep(30)
+            parado = time.monotonic() - ultima_saida[0]
+            if parado >= 120 and proc.poll() is None:
+                log(f"o Claude Code está há {int(parado // 60)} min sem responder "
+                    "(confira o Edge, a extensão Claude e o login do Claude Code)")
+
     relogio = threading.Timer(limite_s, matar)
     relogio.start()
+    threading.Thread(target=ler_erros, daemon=True).start()
+    threading.Thread(target=vigiar, daemon=True).start()
     resultado, primeiro, ultimo, passos = None, None, None, 0
     try:
         proc.stdin.write(prompt)
         proc.stdin.close()
         for linha in proc.stdout:
+            ultima_saida[0] = time.monotonic()
             try:
                 m = json.loads(linha)
             except ValueError:
+                if linha.strip():
+                    log("claude: " + linha.strip()[:300])
                 continue
             tipo = m.get("type")
+            if tipo == "system" and m.get("subtype") == "init":
+                ferramentas = m.get("tools") or []
+                chrome = any("claude-in-chrome" in t for t in ferramentas) or "ToolSearch" in ferramentas
+                log(f"Claude Code iniciado (modelo {m.get('model')}, navegador {'ok' if chrome else 'SEM ferramentas'})")
             if m.get("session_id"):
                 estado["sessao"] = m["session_id"]
             if tipo == "assistant":
@@ -255,6 +299,7 @@ def rodar_claude(prompt, ao_passo, estado, sessao=None, limite_s=TEMPO_MAX_ITEM)
                             estado["fechou"] = True
                         elif "claude-in-chrome" in nome and not nome.endswith("tabs_context_mcp"):
                             estado["fechou"] = False
+                        log(f"passo {passos}: {_descrever_passo(nome, b.get('input') or {})}")
                         ao_passo(passos, nome, b.get("input") or {})
             elif tipo == "rate_limit_event":
                 info = (m.get("rate_limit_info") or {}).get("unifiedWindows")
@@ -270,7 +315,8 @@ def rodar_claude(prompt, ao_passo, estado, sessao=None, limite_s=TEMPO_MAX_ITEM)
     if resultado is None:
         if estourou.is_set():
             raise subprocess.TimeoutExpired(cmd, limite_s)
-        raise RuntimeError((proc.stderr.read() or "").strip()[-800:] or "Claude Code terminou sem resposta")
+        time.sleep(0.5)  # deixa o leitor do stderr terminar
+        raise RuntimeError("\n".join(erros)[-800:] or "Claude Code terminou sem resposta")
     return resultado, primeiro, ultimo, passos
 
 
