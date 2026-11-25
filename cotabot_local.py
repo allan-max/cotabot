@@ -13,6 +13,8 @@ Configuração (variável de ambiente ou linha COTABOT_...=valor no .env; do .en
     COTABOT_PORTA  porta (padrão 8765)
     COTABOT_TOKEN  obrigatório para chamadas que não vêm desta máquina (igual ao do .env do gerenciador)
     COTABOT_NAVEGADOR  edge (padrão) ou chrome: o navegador com a extensão Claude que o robô usa
+    COTABOT_NAVEGADOR_ID  deviceId do navegador desta máquina (obrigatório quando a conta tem mais de um
+                   navegador conectado; descubra com: python cotabot_local.py --navegadores)
 """
 import json
 import os
@@ -76,7 +78,7 @@ def aviso_config():
         parecidos = [p.name for p in pasta.iterdir() if p.name.lower().startswith(".env") or p.name.lower() == "env"]
         if parecidos:
             print(f"  arquivos parecidos na pasta: {', '.join(parecidos)} (o nome tem de ser só .env)", flush=True)
-    for k in ("COTABOT_HOST", "COTABOT_PORTA", "COTABOT_TOKEN", "COTABOT_NAVEGADOR"):
+    for k in ("COTABOT_HOST", "COTABOT_PORTA", "COTABOT_TOKEN", "COTABOT_NAVEGADOR", "COTABOT_NAVEGADOR_ID"):
         if k in CONFIG:
             valor = f"{len(CONFIG[k])} caracteres" if k == "COTABOT_TOKEN" else CONFIG[k]
             print(f"  {k} = {valor}  (de: {ORIGEM[k]})", flush=True)
@@ -97,6 +99,17 @@ if NAVEGADOR not in NAVEGADORES:
     NAVEGADOR = "edge"
 NAV_NOME, NAV_PROCESSO, NAV_COMANDO = NAVEGADORES[NAVEGADOR]
 NAV_OUTRO = NAVEGADORES["chrome" if NAVEGADOR == "edge" else "edge"][0]
+NAV_ID = (CONFIG.get("COTABOT_NAVEGADOR_ID") or "").strip()
+
+if NAV_ID:
+    REGRA_NAVEGADOR = f"""- ANTES de qualquer outra ferramenta do navegador, chame select_browser com deviceId "{NAV_ID}" (o {NAV_NOME}
+  deste computador). Nunca selecione outro navegador e nunca chame switch_browser. Se o select_browser falhar ou a
+  extensão não estiver conectada, pare na hora e responda só: NAVEGADOR_NAO_CONECTADO"""
+else:
+    REGRA_NAVEGADOR = f"""- Use o navegador que já vem conectado a esta sessão (o {NAV_NOME} deste computador). Nunca chame
+  list_connected_browsers, select_browser nem switch_browser: eles podem levar a um navegador de OUTRO computador da
+  conta. Se a ferramenta do navegador disser que a extensão não está conectada ou que há mais de um navegador, pare
+  na hora e responda só: NAVEGADOR_NAO_CONECTADO"""
 TEMPO_MAX_ITEM = 40 * 60  # segundos por item (fornecedores + Google)
 
 fila = queue.Queue()
@@ -143,10 +156,7 @@ ONDE COTAR: {onde}
 
 Regras deste robô (valem por cima da skill):
 - Você está rodando sem ninguém olhando. Não faça perguntas: se a descrição for vaga, cote com o que tiver.
-- Use o navegador que já vem conectado a esta sessão (o {nav} deste computador). Nunca chame
-  list_connected_browsers, select_browser nem switch_browser: eles podem levar a um navegador de OUTRO computador da
-  conta. Se a ferramenta do navegador disser que a extensão não está conectada, pare na hora e responda só:
-  NAVEGADOR_NAO_CONECTADO
+{regra_navegador}
 - Abra uma aba NOVA com tabs_create_mcp e trabalhe nas abas do seu grupo.
 - OBRIGATÓRIO no fim, antes do JSON final: chame tabs_context_mcp e feche com tabs_close_mcp TODAS as abas do seu
   grupo, uma por uma, até a janela fechar. Não deixe nenhuma aba sua aberta.
@@ -444,7 +454,7 @@ def _cotar_item(item, sites, ao_passo, estado):
     com_google = not sites or any(s.strip().lower() in ("google", "google.com", "www.google.com") for s in sites)
     prompt = PROMPT.format(onde=onde_cotar(sites), numero=item["numero"], quantidade=item.get("quantidade") or 1,
                            descricao=item["descricao"], minimo=MINIMO_GOOGLE if com_google else "",
-                           nav=NAV_NOME, nav_outro=NAV_OUTRO)
+                           regra_navegador=REGRA_NAVEGADOR)
     inicio = datetime.now()
     saida, antes, depois, passos = rodar_claude(prompt, ao_passo, estado)
     custo = saida.get("total_cost_usd") or 0
@@ -656,8 +666,27 @@ def desligar_selecao_do_console():
         pass
 
 
+LISTAR = """Chame a ferramenta list_connected_browsers UMA vez e responda só com o resultado dela, sem mudar nada.
+Não chame nenhuma outra ferramenta do navegador."""
+
+
+def listar_navegadores():
+    """python cotabot_local.py --navegadores: mostra os navegadores conectados à conta (para o COTABOT_NAVEGADOR_ID)."""
+    abrir_navegador()
+    print(f"Lendo os navegadores conectados à conta (deixe o {NAV_NOME} aberto)...", flush=True)
+    cmd = [caminho_claude(), "-p", "--chrome", "--model", "haiku", "--setting-sources", "project",
+           "--allowedTools", "mcp__claude-in-chrome__list_connected_browsers", "ToolSearch"]
+    r = subprocess.run(cmd, input=LISTAR, capture_output=True, text=True, encoding="utf-8", errors="replace",
+                       cwd=BASE, env=carregar_env(), timeout=180)
+    print(r.stdout.strip() or r.stderr.strip())
+    print("\nO navegador DESTA máquina é o que some da lista quando você fecha o "
+          f"{NAV_NOME} aqui. Coloque o deviceId dele no .env: COTABOT_NAVEGADOR_ID=<deviceId>", flush=True)
+
+
 def main():
     desligar_selecao_do_console()
+    if "--navegadores" in sys.argv:
+        return listar_navegadores()
     threading.Thread(target=robo, daemon=True).start()
     talvez_ler_uso()
     aviso_config()
