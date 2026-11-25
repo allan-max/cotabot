@@ -1,0 +1,16 @@
+# segredos: a chave da API e o COTABOT_TOKEN ficam só no .env local
+.env
+.env.*
+!.env.exemplo
+
+# ambiente e cache
+.venv/
+__pycache__/
+*.pyc
+
+# saídas do robô (cotações, prints, planilhas, medição de uso)
+tarefas/
+planilhas/
+resultados/
+words/
+uso.jsonl

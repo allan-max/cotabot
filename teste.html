@@ -1,0 +1,274 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Cotabot – teste local</title>
+<style>
+  :root {
+    --fundo: #0b1220; --card: #141c2b; --borda: #26324a; --texto: #e6ebf5; --sub: #8b97ad;
+    --azul: #4f8ff7; --verde: #22c55e; --amarelo: #f5b544; --vermelho: #ef4444; --chip: #1d2a40;
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--fundo); color: var(--texto); font: 14px/1.45 "Segoe UI", system-ui, sans-serif; }
+  .wrap { max-width: 920px; margin: 24px auto; padding: 0 16px; }
+  .aviso { color: var(--sub); font-size: 12px; margin-bottom: 12px; }
+  .card { background: var(--card); border: 1px solid var(--borda); border-radius: 14px; }
+  .sec { padding: 18px 22px; border-bottom: 1px solid var(--borda); }
+  .sec:last-child { border-bottom: 0; }
+  label.rot { display: block; font-size: 11px; letter-spacing: .06em; text-transform: uppercase; color: var(--sub); margin-bottom: 6px; }
+  input, textarea { width: 100%; background: #0f1726; color: var(--texto); border: 1px solid var(--borda); border-radius: 8px; padding: 9px 10px; font: inherit; }
+  textarea { resize: vertical; min-height: 58px; }
+  textarea::placeholder, input::placeholder { color: #5f6b82; }
+  button { background: #172134; color: var(--texto); border: 1px solid var(--borda); border-radius: 8px; padding: 9px 14px; font: 600 13px "Segoe UI", system-ui, sans-serif; cursor: pointer; }
+  button:hover:not(:disabled) { border-color: var(--azul); }
+  button:disabled { opacity: .45; cursor: default; }
+  button.prim { background: var(--azul); border-color: var(--azul); color: #fff; }
+  button.mini { padding: 4px 9px; font-size: 12px; }
+  .linha-item { display: grid; grid-template-columns: 34px 1fr 90px 34px; gap: 8px; align-items: start; margin-top: 8px; }
+  .n { background: var(--chip); border-radius: 6px; padding: 6px 0; text-align: center; font-size: 12px; }
+  .item { border: 1px solid var(--borda); border-radius: 10px; padding: 12px 14px; margin-top: 10px; }
+  .item h4 { margin: 0 0 4px; font-size: 14px; display: flex; gap: 10px; align-items: center; }
+  .desc { color: var(--sub); font-size: 12.5px; word-break: break-word; }
+  .status { font-size: 12px; padding: 2px 8px; border-radius: 6px; margin-left: auto; white-space: nowrap; }
+  .s-fila { background: #2a3550; } .s-cotando { background: #1e3a6e; } .s-pronto { background: #134e2c; } .s-erro { background: #5a1d1d; }
+  @keyframes pulsa { 50% { opacity: .5; } } .s-cotando { animation: pulsa 1.4s infinite; }
+  table { width: 100%; border-collapse: collapse; margin-top: 10px; font-size: 13px; }
+  th, td { text-align: left; padding: 7px 6px; border-top: 1px solid var(--borda); vertical-align: top; }
+  th { color: var(--sub); font-weight: 600; font-size: 12px; }
+  tr.escolhido td { background: rgba(34,197,94,.10); }
+  .selo { font-size: 11px; color: var(--verde); font-weight: 700; }
+  .motivo { margin-top: 8px; font-size: 12.5px; border-left: 3px solid var(--verde); padding-left: 8px; }
+  a { color: var(--azul); }
+  .obs { color: var(--amarelo); font-size: 12px; }
+  details { margin-top: 8px; color: var(--sub); font-size: 12.5px; }
+  .erro { color: var(--vermelho); font-size: 12.5px; margin-top: 6px; white-space: pre-wrap; }
+  .oculto { display: none; }
+  .tabela-wrap { overflow-x: auto; }
+  .usos { display: grid; grid-template-columns: repeat(auto-fit, minmax(190px, 1fr)); gap: 10px; }
+  .uso-box { border: 1px solid var(--borda); border-radius: 10px; padding: 10px 12px; }
+  .uso-box b { font-size: 20px; color: var(--texto); display: block; }
+  .barra { height: 6px; background: #0f1726; border-radius: 4px; margin: 6px 0; overflow: hidden; }
+  .barra i { display: block; height: 100%; background: var(--azul); }
+  .passo { margin-top: 6px; font-size: 12px; color: var(--azul); }
+  .baixar { display: inline-block; background: var(--verde); color: #04170b; font-weight: 700; padding: 10px 16px; border-radius: 8px; text-decoration: none; }
+  @media (max-width: 600px) { .linha-item { grid-template-columns: 28px 1fr 70px 30px; } }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="aviso">Teste local do robô de cotação. Não fala com o Portal Maestro nem com o gerenciador.</div>
+
+  <div class="card" id="uso" style="margin-bottom:14px">
+    <div class="sec">
+      <label class="rot">Uso do plano Claude pelo robô</label>
+      <div id="usoCorpo" class="desc">Carregando…</div>
+    </div>
+  </div>
+
+  <div class="card" id="form">
+    <div class="sec">
+      <label class="rot" for="evento">Número do evento</label>
+      <input id="evento" placeholder="ex.: 310170">
+    </div>
+    <div class="sec">
+      <label class="rot">Itens (descrição e quantidade)</label>
+      <div id="itens"></div>
+      <div style="margin-top:10px"><button onclick="addItem()">+ Adicionar item</button></div>
+    </div>
+    <div class="sec">
+      <label class="rot" for="sites">Sites para cotar (opcional, um por linha)</label>
+      <textarea id="sites" rows="3" placeholder="Vazio = 9 fornecedores padrão (Martins, Tambasa, FastShop, Casa e Vídeo, Fujioka, Bartofil, Gazin, Friopeças, Belmicro) + Google.&#10;Escreva google numa linha para incluir o Google. Ex.: kabum.com.br"></textarea>
+    </div>
+    <div class="sec">
+      <button class="prim" id="btnEnviar" onclick="enviar()">Cotar itens</button>
+      <div class="erro" id="erroEnvio"></div>
+    </div>
+  </div>
+
+  <div class="card oculto" id="painel">
+    <div class="sec" style="display:flex;gap:12px;align-items:center;flex-wrap:wrap">
+      <div><label class="rot">Evento</label><b id="pEvento" style="font:600 22px Consolas,monospace"></b></div>
+      <div id="pSites" class="desc" style="flex:1"></div>
+      <span id="pStatus" class="status"></span>
+    </div>
+    <div class="sec" id="pBaixar"></div>
+    <div class="sec" id="resultado"></div>
+    <div class="sec"><button onclick="novo()">Nova cotação</button></div>
+  </div>
+</div>
+
+<script>
+let timer = null;
+const NOME_STATUS = { fila: "Na fila", cotando: "Cotando…", pronto: "Pronto", erro: "Erro" };
+
+function esc(s) {
+  return String(s ?? "").replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+}
+function linkSeguro(u) {
+  try { const x = new URL(u); return /^https?:$/.test(x.protocol) ? x.href : ""; } catch { return ""; }
+}
+
+function addItem(desc = "", qtd = 1) {
+  const box = document.getElementById("itens");
+  const div = document.createElement("div");
+  div.className = "linha-item";
+  div.innerHTML = `<div class="n"></div>
+    <textarea class="i-desc" rows="2" placeholder="Descrição do item (pode colar a do portal)"></textarea>
+    <input class="i-qtd" type="number" min="1" title="Quantidade">
+    <button class="mini" title="Remover" onclick="this.parentElement.remove();renumerar()">✕</button>`;
+  div.querySelector(".i-desc").value = desc;
+  div.querySelector(".i-qtd").value = qtd;
+  box.appendChild(div);
+  renumerar();
+}
+function renumerar() {
+  document.querySelectorAll("#itens .n").forEach((n, i) => (n.textContent = i + 1));
+}
+
+async function enviar() {
+  const itens = [...document.querySelectorAll("#itens .linha-item")].map(l => ({
+    descricao: l.querySelector(".i-desc").value.trim(),
+    quantidade: l.querySelector(".i-qtd").value,
+  })).filter(i => i.descricao);
+  const erro = document.getElementById("erroEnvio");
+  erro.textContent = "";
+  if (!itens.length) { erro.textContent = "Coloque pelo menos um item."; return; }
+  const corpo = { evento: document.getElementById("evento").value.trim(), sites: document.getElementById("sites").value, itens };
+  const btn = document.getElementById("btnEnviar");
+  btn.disabled = true;
+  try {
+    const r = await fetch("/api/cotar", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(corpo) });
+    const j = await r.json();
+    if (!r.ok) throw new Error(j.erro || r.status);
+    document.getElementById("form").classList.add("oculto");
+    document.getElementById("painel").classList.remove("oculto");
+    acompanhar(j.id);
+  } catch (e) {
+    erro.textContent = "Não foi possível enviar: " + e.message;
+  } finally {
+    btn.disabled = false;
+  }
+}
+
+function novo() {
+  clearInterval(timer);
+  document.getElementById("painel").classList.add("oculto");
+  document.getElementById("form").classList.remove("oculto");
+}
+
+function acompanhar(id) {
+  clearInterval(timer);
+  const tick = async () => {
+    try {
+      const t = await (await fetch("/api/tarefa/" + id)).json();
+      render(t);
+      if (t.status === "pronto") clearInterval(timer);
+    } catch { /* servidor fora do ar: tenta de novo */ }
+  };
+  tick();
+  timer = setInterval(tick, 3000);
+}
+
+function render(t) {
+  document.getElementById("pEvento").textContent = t.evento || "—";
+  document.getElementById("pSites").textContent = "Sites: " + (t.sites?.length ? t.sites.join(", ") : "padrão (9 fornecedores + Google)");
+  const st = document.getElementById("pStatus");
+  st.className = "status s-" + t.status;
+  st.textContent = NOME_STATUS[t.status] || t.status;
+
+  const baixar = document.getElementById("pBaixar");
+  if (t.planilha) baixar.innerHTML = `<a class="baixar" href="/api/planilha/${esc(t.id)}">⬇ Baixar Planilha Base (${esc(t.planilha)})</a>`;
+  else if (t.erro_planilha) baixar.innerHTML = `<div class="erro">Erro ao gerar a planilha: ${esc(t.erro_planilha)}</div>`;
+  else baixar.innerHTML = `<div class="desc">A planilha fica pronta quando todos os itens terminarem.</div>`;
+
+  document.getElementById("resultado").innerHTML = t.itens.map(it => {
+    const r = it.resultado || {};
+    const anuncios = r.anuncios || [];
+    const tabela = anuncios.length ? `
+      <div class="tabela-wrap"><table>
+        <tr><th>Fornecedor</th><th>Anúncio</th><th>Preço</th></tr>
+        ${anuncios.map((a, i) => {
+          const href = linkSeguro(a.link);
+          const esc1 = i === r.escolhido;
+          return `<tr class="${esc1 ? "escolhido" : ""}">
+            <td>${esc(a.fornecedor)}${esc1 ? `<div class="selo">ESCOLHIDO</div>` : ""}</td>
+            <td>${href ? `<a href="${esc(href)}" target="_blank" rel="noopener noreferrer">${esc(a.titulo || href)}</a>` : esc(a.titulo)}
+                ${a.observacao ? `<div class="obs">${esc(a.observacao)}</div>` : ""}
+                ${a.tipo_site || a.origem ? `<div class="desc">${esc([a.tipo_site, a.origem].filter(Boolean).join(" · "))}</div>` : ""}
+                ${a.contato ? `<div class="desc">Contato: ${esc(a.contato)}</div>` : ""}</td>
+            <td>${esc(a.preco)}</td></tr>`;
+        }).join("")}
+      </table></div>` : (it.status === "pronto" ? `<div class="desc" style="margin-top:8px">Nenhum anúncio encontrado.</div>` : "");
+    const motivo = r.motivo_escolha ? `<div class="motivo"><b>Motivo:</b> ${esc(r.motivo_escolha)}${r.print ? "" : " <i>(sem print)</i>"}</div>` : "";
+    const nao = (r.nao_encontrado || []).length ? `
+      <details><summary>Onde não achou (${r.nao_encontrado.length})</summary>
+        ${r.nao_encontrado.map(n => `<div>• <b>${esc(n.fornecedor)}</b>: ${esc(n.motivo)}</div>`).join("")}
+      </details>` : "";
+    const extra = it.status === "pronto" ? `<div class="desc" style="margin-top:6px">
+        ${r.aviso ? esc(r.aviso) + "<br>" : ""}
+        ${r.duracao_s ? Math.max(1, Math.round(r.duracao_s / 60)) + " min" : ""}
+        · ${esc(r.passos ?? "?")} passos
+        · ${esc((r.buscas_google || []).length)} buscas no Google
+        · ${esc(new Set(r.sites_visitados || []).size)} sites abertos
+        ${r.rodadas > 1 ? "· precisou de 2ª rodada" : ""}</div>` : "";
+    const andamento = it.status === "cotando"
+      ? `<div class="passo">${esc(it.passos || 0)} passos · ${esc(it.passo_atual || "começando…")}</div>` : "";
+    return `<div class="item">
+      <h4><span class="n" style="padding:1px 8px">${it.numero}</span> Item ${it.numero} · qtd ${esc(it.quantidade)}
+        <span class="status s-${esc(it.status)}">${NOME_STATUS[it.status] || esc(it.status)}</span></h4>
+      <div class="desc">${esc(it.descricao)}</div>
+      ${andamento}${tabela}${motivo}${nao}${extra}
+      ${it.erro ? `<div class="erro">${esc(it.erro)}</div>` : ""}
+    </div>`;
+  }).join("");
+}
+
+function estimativa(j, teto) {
+  if (!j.itens_calibracao) return `estimativa: precisa cotar 1 item${teto < 100 ? `<br>teto do robô: ${teto}%` : ""}`;
+  const faixa = j.cabem_max == null
+    ? `no mínimo ${esc(j.cabem_min)}`
+    : (j.cabem_min === j.cabem_max ? "" : `entre ${esc(j.cabem_min)} e ${esc(j.cabem_max)}`);
+  const cor = { alta: "var(--verde)", "média": "var(--amarelo)", baixa: "var(--vermelho)" }[j.confianca] || "var(--sub)";
+  const principal = j.cabem_itens != null
+    ? `<b style="font-size:15px;display:inline">cabem ≈ ${esc(j.cabem_itens)} itens</b> até ${teto}%`
+    : `<b style="font-size:15px;display:inline">cabem ${faixa} itens</b> até ${teto}%`;
+  return `${principal}${j.cabem_itens != null && faixa ? `<br>(${faixa})` : ""}
+    <br>≈ ${esc(j.media_por_item_pct ?? "<1")}% por item
+    <br><span style="color:${cor}">confiança ${esc(j.confianca)}</span> · medido em ${esc(j.itens_calibracao)} item(ns), ${esc(j.medido_pct)}% de uso`;
+}
+
+async function carregarUso() {
+  try {
+    const u = await (await fetch("/api/uso")).json();
+    const caixa = j => {
+      const usado = j.usado_pct;
+      const teto = j.teto_pct ?? 100;
+      const passou = usado != null && usado >= teto;
+      return `<div class="uso-box">
+        <span class="desc">${esc(j.nome)}</span>
+        <b style="${passou ? "color:var(--vermelho)" : ""}">${usado == null ? "—" : usado + "% usado"}</b>
+        <div class="barra" style="position:relative"><i style="width:${Math.min(100, usado || 0)}%;${passou ? "background:var(--vermelho)" : ""}"></i>
+          ${teto < 100 ? `<span title="teto ${teto}%" style="position:absolute;top:-3px;left:${teto}%;width:2px;height:12px;background:var(--amarelo)"></span>` : ""}</div>
+        <span class="desc">${j.renova ? "renova " + esc(j.renova) : "sem leitura ainda"}<br>
+        ${estimativa(j, teto)}</span>
+      </div>`;
+    };
+    document.getElementById("usoCorpo").innerHTML = `<div class="usos">
+        ${caixa(u.janelas.five_hour)}${caixa(u.janelas.seven_day)}
+        <div class="uso-box"><span class="desc">Média por item (${esc(u.itens_medidos)} medidos)</span>
+          <b>${u.media_duracao_min != null ? esc(u.media_duracao_min) + " min" : "—"}</b>
+          <span class="desc">${u.media_passos != null ? esc(u.media_passos) + " passos" : ""}
+          ${u.media_custo_usd != null ? "<br>≈ US$ " + esc(u.media_custo_usd) + " (equivalente API)" : ""}</span></div>
+      </div>
+      <div class="desc" style="margin-top:8px">${u.lido_em ? "Uso da conta lido às " + esc(u.lido_em) + " (atualiza a cada 5 min e durante as cotações). " : "Lendo o uso da conta… "}
+      A porcentagem é da sua conta inteira: se você usar o Claude ao mesmo tempo, a média por item sobe.</div>`;
+  } catch { document.getElementById("usoCorpo").textContent = "Sem leitura de uso."; }
+}
+carregarUso();
+setInterval(carregarUso, 15000);
+
+addItem("MICROVENTILADOR;POTENCIA:4,80W;TENSAO:12V;CORRENTE:0,40 A;ROTACAO:4000RPM;DIMENSOES:80X80X25MM; FABRICANTE/REFERENCIA: NEWORK / 14.1 04HR; NEWORK / RT-080 12VCC 0,40A;", 300);
+</script>
+</body>
+</html>
