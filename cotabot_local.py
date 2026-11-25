@@ -37,22 +37,53 @@ TAREFAS = BASE / "tarefas"
 PAGINA = BASE / "teste.html"
 
 
+def _texto_env(arq):
+    """Lê o .env em UTF-8 (com ou sem BOM) ou UTF-16 ("Unicode" do Bloco de Notas)."""
+    bruto = arq.read_bytes()
+    if bruto[:2] in (b"\xff\xfe", b"\xfe\xff"):
+        return bruto.decode("utf-16", errors="ignore")
+    return bruto.decode("utf-8-sig", errors="ignore")
+
+
 def ler_config():
-    """Só as linhas COTABOT_* do .env (o resto, como a chave da API, nunca entra no ambiente)."""
-    cfg = {}
+    """Só as linhas COTABOT_* do .env (o resto, como a chave da API, nunca entra no ambiente).
+
+    Devolve (config, origem): origem diz de onde veio cada chave, para o aviso da partida.
+    """
+    cfg, origem = {}, {}
     arq = Path(__file__).parent / ".env"
     if arq.exists():
-        # utf-8-sig: o Bloco de Notas grava o .env com BOM, que estragaria o nome da 1ª linha
-        for linha in arq.read_text(encoding="utf-8-sig", errors="ignore").splitlines():
+        for linha in _texto_env(arq).splitlines():
             k, _, v = linha.partition("=")
-            k = k.strip()
+            k = k.strip().lstrip("﻿")
             if k.startswith("COTABOT_"):
                 cfg[k] = v.strip().strip('"').strip("'")
-    cfg.update({k: v for k, v in os.environ.items() if k.startswith("COTABOT_")})
-    return cfg
+                origem[k] = ".env"
+    for k, v in os.environ.items():
+        if k.startswith("COTABOT_"):
+            cfg[k] = v
+            origem[k] = "variável do Windows"
+    return cfg, origem
 
 
-CONFIG = ler_config()
+def aviso_config():
+    """Mostra na janela de onde veio a configuração (nunca o valor do token)."""
+    pasta = Path(__file__).parent
+    env = pasta / ".env"
+    print(f"Configuração: {env} {'encontrado' if env.exists() else 'NÃO encontrado'}", flush=True)
+    if not env.exists():
+        parecidos = [p.name for p in pasta.iterdir() if p.name.lower().startswith(".env") or p.name.lower() == "env"]
+        if parecidos:
+            print(f"  arquivos parecidos na pasta: {', '.join(parecidos)} (o nome tem de ser só .env)", flush=True)
+    for k in ("COTABOT_HOST", "COTABOT_PORTA", "COTABOT_TOKEN"):
+        if k in CONFIG:
+            valor = f"{len(CONFIG[k])} caracteres" if k == "COTABOT_TOKEN" else CONFIG[k]
+            print(f"  {k} = {valor}  (de: {ORIGEM[k]})", flush=True)
+        else:
+            print(f"  {k} não definido", flush=True)
+
+
+CONFIG, ORIGEM = ler_config()
 HOST = CONFIG.get("COTABOT_HOST") or "127.0.0.1"
 PORTA = int(CONFIG.get("COTABOT_PORTA") or 8765)
 TOKEN = (CONFIG.get("COTABOT_TOKEN") or "").strip()
@@ -539,6 +570,7 @@ class Handler(BaseHTTPRequestHandler):
 def main():
     threading.Thread(target=robo, daemon=True).start()
     talvez_ler_uso()
+    aviso_config()
     if HOST not in LOCAIS and len(TOKEN) < 32:
         sys.exit("COTABOT_HOST abre o Cotabot na rede: coloque COTABOT_TOKEN (32+ caracteres) no .env.")
     servidor = ThreadingHTTPServer((HOST, PORTA), Handler)
