@@ -177,7 +177,7 @@ Depois de achar as opções:
 
 Item {numero} (quantidade {quantidade}):
 {descricao}
-
+{regras}
 Sua ÚLTIMA mensagem deve ser SOMENTE este JSON (sem texto antes ou depois, sem ```):
 {{"anuncios": [{{"fornecedor": "...", "titulo": "título curto com cor e voltagem", "link": "https://...",
    "preco": "R$ ... no Pix / R$ ... parcelado, ou 'só com login' ou 'sem preço na busca'",
@@ -228,10 +228,22 @@ def onde_cotar(sites):
     outros = [s for s in sites if s.strip().lower() not in ("google", "google.com", "www.google.com")]
     partes = []
     if outros:
-        partes.append("somente nestes sites (use a skill cote-para-mim para os que estão nela): " + "; ".join(outros))
+        partes.append(
+            "somente nestes fornecedores/sites: " + "; ".join(outros) + ". Use a skill cote-para-mim para os que estão "
+            "nela. Fornecedor só pelo nome (sem endereço): descubra o site oficial dele (busca no Google, só resultado "
+            "orgânico) e pesquise lá; o que vier entre parênteses é observação sobre ele. Distribuidor que só mostra preço "
+            "com login: não faça login, anote como 'precisa de cadastro' e guarde o contato (telefone, WhatsApp, e-mail)")
     if len(outros) < len(sites):
         partes.append(google if outros else "pesquise só no Google com a skill pesquisa-google (só resultados orgânicos)")
     return "; ".join(partes) + "."
+
+
+def texto_regras(regras):
+    """Regras de compra do padrão (Maestro) para o item: vão no prompt logo abaixo da descrição."""
+    regras = [r for r in (regras or []) if r]
+    if not regras:
+        return ""
+    return "\nREGRAS DE COMPRA deste item (siga e comente no campo observacao):\n" + "\n".join(f"- {r}" for r in regras) + "\n"
 
 
 ARQ_LOG = BASE / "cotabot.log"
@@ -454,7 +466,7 @@ def _cotar_item(item, sites, ao_passo, estado):
     com_google = not sites or any(s.strip().lower() in ("google", "google.com", "www.google.com") for s in sites)
     prompt = PROMPT.format(onde=onde_cotar(sites), numero=item["numero"], quantidade=item.get("quantidade") or 1,
                            descricao=item["descricao"], minimo=MINIMO_GOOGLE if com_google else "",
-                           regra_navegador=REGRA_NAVEGADOR)
+                           regra_navegador=REGRA_NAVEGADOR, regras=texto_regras(item.get("regras")))
     inicio = datetime.now()
     saida, antes, depois, passos = rodar_claude(prompt, ao_passo, estado)
     custo = saida.get("total_cost_usd") or 0
@@ -518,7 +530,7 @@ def robo():
             reg = {"evento": tarefa.get("evento"), "item": item["numero"],
                    "inicio": inicio.isoformat(timespec="seconds")}
             try:
-                res = cotar_item(item, tarefa["sites"], ao_passo)
+                res = cotar_item(item, item.get("sites") or tarefa["sites"], ao_passo)
                 uso_item = res.pop("_uso", {})
                 atualizar(tid, idx, status="pronto", resultado=res, passo_atual="")
                 reg.update(status="pronto", duracao_s=res["duracao_s"], custo_usd=res["custo_usd"],
@@ -627,7 +639,11 @@ class Handler(BaseHTTPRequestHandler):
                     qtd = max(1, int(float(str(it.get("quantidade") or 1).replace(",", "."))))
                 except ValueError:
                     qtd = 1
-                itens.append({"numero": len(itens) + 1, "descricao": desc, "quantidade": qtd, "status": "fila"})
+                # Do Maestro: onde cotar ESTE item (padrões da categoria/marca) e as regras de compra dele
+                sites_item = [str(s).strip()[:200] for s in (it.get("sites") or []) if str(s).strip()][:60]
+                regras = [str(r).strip()[:1000] for r in (it.get("regras") or []) if str(r).strip()][:10]
+                itens.append({"numero": len(itens) + 1, "descricao": desc, "quantidade": qtd, "status": "fila",
+                              "sites": sites_item, "regras": regras})
             if not itens:
                 return self.responder(400, {"erro": "nenhum item para cotar"})
             if len(itens) > gerar_planilha.MAX_ITENS:
